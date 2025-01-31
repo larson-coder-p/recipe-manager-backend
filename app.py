@@ -1,14 +1,26 @@
+import os
 from flask import Flask, jsonify, request
-from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
 
-# Configure SQLite database
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///recipes.db'
+# Set database path inside backend folder
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+DATABASE_PATH = os.path.join(BASE_DIR, "recipes.db")
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DATABASE_PATH}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
+
+# Ensure database folder and file exist
+def initialize_database():
+    if not os.path.exists(DATABASE_PATH):
+        print("Creating database file...")
+        with app.app_context():
+            db.create_all()
+        print("Database created successfully!")
 
 # Recipe Model
 class Recipe(db.Model):
@@ -17,58 +29,49 @@ class Recipe(db.Model):
     ingredients = db.Column(db.Text, nullable=False)
     instructions = db.Column(db.Text, nullable=False)
 
-# Initialize database
-with app.app_context():
-    db.create_all()
+# Call function to ensure database exists
+initialize_database()
 
-# Get all recipes
+# API Routes
 @app.route('/recipes', methods=['GET'])
 def get_recipes():
     recipes = Recipe.query.all()
-    return jsonify([{"id": r.id, "title": r.title, "ingredients": r.ingredients, "instructions": r.instructions} for r in recipes])
+    return jsonify([{
+        "id": r.id,
+        "title": r.title,
+        "ingredients": r.ingredients,
+        "instructions": r.instructions
+    } for r in recipes])
 
-# Get a single recipe by ID
-@app.route('/recipes/<int:recipe_id>', methods=['GET'])
-def get_recipe_by_id(recipe_id):
-    recipe = Recipe.query.get(recipe_id)
-    if not recipe:
-        return jsonify({"error": "Recipe not found"}), 404
-    return jsonify({"id": recipe.id, "title": recipe.title, "ingredients": recipe.ingredients, "instructions": recipe.instructions})
-
-# Add a new recipe
 @app.route('/recipes', methods=['POST'])
 def add_recipe():
-    data = request.json
-    new_recipe = Recipe(title=data['title'], ingredients=data['ingredients'], instructions=data['instructions'])
-    db.session.add(new_recipe)
-    db.session.commit()
-    return jsonify({"message": "Recipe added successfully!", "id": new_recipe.id}), 201
+    try:
+        print("Incoming POST request:", request.json)  # Debugging
+        data = request.json
 
-# Update a recipe
-@app.route('/recipes/<int:recipe_id>', methods=['PUT'])
-def update_recipe(recipe_id):
-    recipe = Recipe.query.get(recipe_id)
-    if not recipe:
-        return jsonify({"error": "Recipe not found"}), 404
+        if not data or "title" not in data or "ingredients" not in data or "instructions" not in data:
+            return jsonify({"error": "Invalid input"}), 400
 
-    data = request.json
-    recipe.title = data.get('title', recipe.title)
-    recipe.ingredients = data.get('ingredients', recipe.ingredients)
-    recipe.instructions = data.get('instructions', recipe.instructions)
-    db.session.commit()
+        new_recipe = Recipe(
+            title=data["title"],
+            ingredients=data["ingredients"],
+            instructions=data["instructions"]
+        )
+        db.session.add(new_recipe)
+        db.session.commit()
 
-    return jsonify({"message": "Recipe updated successfully!"})
+        print(f"Recipe '{new_recipe.title}' added successfully!")
+        return jsonify({
+            "id": new_recipe.id,
+            "title": new_recipe.title,
+            "ingredients": new_recipe.ingredients,
+            "instructions": new_recipe.instructions,
+        }), 201
 
-# Delete a recipe
-@app.route('/recipes/<int:recipe_id>', methods=['DELETE'])
-def delete_recipe(recipe_id):
-    recipe = Recipe.query.get(recipe_id)
-    if not recipe:
-        return jsonify({"error": "Recipe not found"}), 404
-
-    db.session.delete(recipe)
-    db.session.commit()
-    return jsonify({"message": "Recipe deleted successfully!"})
+    except Exception as e:
+        print("ERROR:", str(e))
+        return jsonify({"error": "Internal Server Error"}), 500
 
 if __name__ == '__main__':
+    print(f"Using database at: {DATABASE_PATH}")
     app.run(debug=True)
