@@ -35,6 +35,19 @@ def get_recipes():
         "instructions": r.instructions
     } for r in recipes])
 
+@app.route('/recipes/<int:id>', methods=['GET'])
+def get_recipe_by_id(id):
+    recipe = Recipe.query.get(id)
+    if not recipe:
+        return jsonify({"error": "Recipe not found"}), 404
+
+    return jsonify({
+        "id": recipe.id,
+        "title": recipe.title,
+        "ingredients": recipe.ingredients,
+        "instructions": recipe.instructions
+    })
+
 @app.route('/recipes', methods=['POST'])
 def add_recipe():
     try:
